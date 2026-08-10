@@ -46,6 +46,7 @@ __all__ = [
     "ImageClassificationTask",
     "ModelTask",
     "MllamaVisionLanguageTask",
+    "MageVLTask",
     "MaskedDiffusionTask",
     "MoshiDepformerTask",
     "MoshiTemporalTask",
@@ -124,6 +125,7 @@ from mobius.tasks._vision_language import Qwen3VLVisionLanguageTask
 from mobius.tasks._vision_language_3model import (
     Cosmos3EdgeVLTask,
     HybridQwenVLTask,
+    MageVLTask,
     MllamaVisionLanguageTask,
     PixtralVLTask,
     QwenVLTask,
@@ -163,6 +165,7 @@ TASK_REGISTRY: dict[str, type[ModelTask]] = {
     "cosmos3-edge-vl": Cosmos3EdgeVLTask,
     "pixtral-vl": PixtralVLTask,
     "mllama-vision-language": MllamaVisionLanguageTask,
+    "mage-vl": MageVLTask,
     "qwen-vl": QwenVLTask,
     "hybrid-qwen-vl": HybridQwenVLTask,
     "qwen3-vl-vision-language": Qwen3VLVisionLanguageTask,

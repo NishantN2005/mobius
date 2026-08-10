@@ -353,7 +353,7 @@ def _generate_seq2seq(case: TestCase, json_path: Path, device: str) -> None:
             input_ids=torch.from_numpy(input_ids).to(torch_device),
             decoder_input_ids=torch.from_numpy(decoder_start).to(torch_device),
         )
-    last_logits = outputs.logits[0, -1, :].cpu().numpy()
+    last_logits = outputs.logits[0, -1, :].float().cpu().numpy()
     golden = _extract_logits_golden(last_logits)
 
     # L5: greedy generation
@@ -413,8 +413,9 @@ def _generate_vision_language(case: TestCase, json_path: Path, device: str) -> N
         case.model_id, dtype=torch_dtype, device=device
     )
 
-    # Load images from testdata/
+    # Load real image/video media from testdata/.
     images = [Image.open(Path("testdata") / img_path) for img_path in case.images]
+    videos = [str(Path("testdata") / video_path) for video_path in case.videos]
 
     # Build a chat-formatted prompt when a usable template is available.
     # Phi-3 Vision exposes its template on the underlying tokenizer rather
@@ -425,6 +426,8 @@ def _generate_vision_language(case: TestCase, json_path: Path, device: str) -> N
         content: list[dict[str, str]] = []
         for img_path in case.images:
             content.append({"type": "image", "image": str(Path("testdata") / img_path)})
+        for video_path in case.videos:
+            content.append({"type": "video", "video": str(Path("testdata") / video_path)})
         content.append({"type": "text", "text": prompt_text})
         messages = [{"role": "user", "content": content}]
         try:
@@ -451,11 +454,37 @@ def _generate_vision_language(case: TestCase, json_path: Path, device: str) -> N
             prompt_text = processor.image_token * len(case.images) + prompt_text
 
     # Process multimodal inputs through the HF processor
-    processed = processor(
-        text=prompt_text,
-        images=images if images else None,
-        return_tensors="pt",
-    )
+    image_processor = getattr(processor, "image_processor", None)
+    video_processor = getattr(processor, "video_processor", None)
+    saved_image_max = getattr(image_processor, "max_pixels", None)
+    image_size = getattr(image_processor, "size", None)
+    saved_image_longest = getattr(image_size, "longest_edge", None)
+    saved_video_max = getattr(video_processor, "max_pixels", None)
+    try:
+        if case.media_max_pixels is not None:
+            if image_processor is not None:
+                image_processor.max_pixels = case.media_max_pixels
+                if image_size is not None and saved_image_longest is not None:
+                    image_size.longest_edge = case.media_max_pixels
+            if video_processor is not None:
+                video_processor.max_pixels = case.media_max_pixels
+        processor_kwargs: dict[str, object] = {
+            "text": prompt_text,
+            "return_tensors": "pt",
+        }
+        if images:
+            processor_kwargs["images"] = images
+        if videos:
+            processor_kwargs["videos"] = videos
+            processor_kwargs["num_frames"] = case.video_num_frames
+        processed = processor(**processor_kwargs)
+    finally:
+        if image_processor is not None and saved_image_max is not None:
+            image_processor.max_pixels = saved_image_max
+        if image_size is not None and saved_image_longest is not None:
+            image_size.longest_edge = saved_image_longest
+        if video_processor is not None and saved_video_max is not None:
+            video_processor.max_pixels = saved_video_max
 
     # Normalize the CLI/device-map selection to a concrete runtime device
     # before moving any tensors. `device="auto"` is handled by Transformers/
@@ -468,7 +497,7 @@ def _generate_vision_language(case: TestCase, json_path: Path, device: str) -> N
     with torch.no_grad():
         outputs = model(**processed)
 
-    last_logits = outputs.logits[0, -1, :].cpu().numpy()
+    last_logits = outputs.logits[0, -1, :].float().cpu().numpy()
     golden = _extract_logits_golden(last_logits)
     input_ids_np = processed["input_ids"].cpu().numpy()
 
